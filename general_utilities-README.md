@@ -36,8 +36,6 @@ import general_utilities as GU
 dataframe = GU.addPrefixesToColumnNames(dataframe, column_names=["id", "score"], prefixes="meta_")
 ```
 
-This module contains a comprehensive collection of utility functions designed to simplify common tasks related to data handling, file operations, statistical comparisons, Excel manipulations, and geospatial processing. Below is an overview of the functions available in the module.
-
 ---
 
 ## 📊 DataFrame Operations
