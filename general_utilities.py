@@ -4,6 +4,12 @@ from openpyxl import load_workbook, Workbook, worksheet
 from pyproj import Transformer
 from pandas import DataFrame, Series
 from scipy.stats import entropy, gaussian_kde, ks_2samp, mannwhitneyu
+from collections import Counter
+from sklearn.preprocessing import LabelEncoder
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.feature_selection import VarianceThreshold
+from sklearn.impute import KNNImputer
 from tkinter import messagebox
 import fiona
 import geopandas
@@ -11,6 +17,7 @@ import glob
 import numpy
 import os
 import pandas
+import pickle
 import re
 import time
 import tkinter
@@ -30,6 +37,15 @@ none_values = [None, numpy.nan]
 def addDataFrameAsSheetToExcel(dataframe: DataFrame, title: str, file_path: str):
     with pandas.ExcelWriter(file_path, engine='openpyxl', mode='a') as writer:
         dataframe.to_excel(writer, sheet_name=title, index=False)
+
+def addEmptyColumnsToDataframe(dataframe: pandas.DataFrame, columns: list[str], dtype: str = None, overwrite: bool = False):
+    for column in columns:
+        if overwrite or column not in dataframe.columns:
+            if dtype:
+                dataframe[column] = pandas.Series(dtype=dtype)
+            else:
+                dataframe[column] = pandas.NA
+    return dataframe
 
 def addLatAndLongColumnsToDataframe(dataframe: DataFrame, location_column: str = 'location', lat_column: str = 'latitude', lon_column: str = 'longitude', remove_location: bool = True):
     dataframe[[lat_column, lon_column]] = dataframe[location_column].apply(evaluateAndSplitLocation).apply(Series)
@@ -278,30 +294,30 @@ def extractCSVDataIntoDataFrame(file_path: str, file_projection_system: str, des
         dataframe['x'], dataframe['y'] = transformer.transform(dataframe['x'].values, dataframe['y'].values)
     return dataframe
 
-def extractDataFrame(file_path: str, sheet_names: list[str] = None, ignored_sheets: list[str] = None, headers_row_index: int = 0, first_data_row: int = 1, include_file_path: bool = False):
+def extractDataFrame(file_path: str, sheet_names: list[str] = None, ignored_sheets: list[str] = None, headers_row_index: int = 0, first_data_row: int = 1, include_file_path: bool = False, required_columns: list[str] = None, reformat_names: bool = True):
     try:
         dataframe = excel_data = None
         if file_path.lower().endswith('.csv'):
-            dataframe = pandas.read_csv(file_path)
+            dataframe = pandas.read_csv(file_path, usecols=required_columns)
         elif file_path.lower().endswith(('.xls', '.xlsx')):
             if sheet_names and len(sheet_names) > 0:
-                excel_data = pandas.read_excel(file_path, sheet_name=sheet_names, dtype=str)
+                excel_data = pandas.read_excel(file_path, sheet_name=sheet_names, dtype=str, usecols=required_columns)
             elif ignored_sheets and len(ignored_sheets) > 0:
                 all_sheets = pandas.ExcelFile(file_path).sheet_names
                 selected_sheets = [sheet for sheet in all_sheets if sheet not in ignored_sheets]
-                excel_data = pandas.read_excel(file_path, sheet_name=selected_sheets, dtype=str)
+                excel_data = pandas.read_excel(file_path, sheet_name=selected_sheets, dtype=str, usecols=required_columns)
             else:
-                dataframe = pandas.read_excel(file_path, dtype=str)
+                dataframe = pandas.read_excel(file_path, dtype=str, usecols=required_columns)
         else:
             raise ValueError("Unsupported file type. Only .csv, .xls, or .xlsx are allowed.")
         if dataframe is not None and not dataframe.empty:
-            dataframe = prepareDataFrame(dataframe, file_path, headers_row_index, first_data_row, include_file_path)
+            dataframe = prepareDataFrame(dataframe, file_path, headers_row_index, first_data_row, include_file_path, reformat_names)
             return dataframe
         elif excel_data:
             dfs = []
             names = []
             for sheet_name, sheet_data in excel_data.items():
-                sheet_data = prepareDataFrame(sheet_data, file_path, headers_row_index, first_data_row, include_file_path)
+                sheet_data = prepareDataFrame(sheet_data, file_path, headers_row_index, first_data_row, include_file_path, reformat_names)
                 dfs.append(sheet_data)
                 names.append(sheet_name)
             if len(dfs) == 1:
@@ -320,12 +336,12 @@ def fillDataFrameByAnotherDataFrame(source_dataframe: DataFrame, destination_dat
         filled_dataframe[dest_col] = source_dataframe[source_col].copy()
     return filled_dataframe
 
-def findCSVFilesBySubstring(folder_path: str, file_name_substring: str = None):
+def findCSVFilesBySubstring(folder_path: str, file_name_substring: str = None, recursive: bool = True):
     csv_files = []
     if file_name_substring is not None:
-        csv_files = glob.glob(os.path.join(folder_path, '**', f'*{file_name_substring}*'), recursive=True)
+        csv_files = glob.glob(os.path.join(folder_path, '**', f'*{file_name_substring}*'), recursive=recursive)
     else:
-        csv_files = glob.glob(os.path.join(folder_path, '**', '*.csv'), recursive=True)
+        csv_files = glob.glob(os.path.join(folder_path, '**', '*.csv'), recursive=recursive)
     return csv_files
 
 def findCSVFilesInFolder(folder_path: str, subdirectories: list = None, check_projection_system: bool = True):
@@ -353,11 +369,11 @@ def findShapeFilesInFolder(folder_path: str, subdirectories: list = None):
     projection_system = getDominantProjectionSystem(shp_files)
     return shp_files, projection_system
 
-def findXLSXFilesBySubstring(folder_path: str, file_name_substring: str = None):
+def findXLSXFilesBySubstring(folder_path: str, file_name_substring: str = None, recursive: bool = True):
     if file_name_substring is not None:
-        xlsx_files = glob.glob(os.path.join(folder_path, file_name_substring), recursive=True)
+        xlsx_files = glob.glob(os.path.join(folder_path, file_name_substring), recursive=recursive)
     else:
-        xlsx_files = glob.glob(os.path.join(folder_path, '**/*.xlsx'), recursive=True)
+        xlsx_files = glob.glob(os.path.join(folder_path, '**/*.xlsx'), recursive=recursive)
     return xlsx_files
 
 def freezePaneInExcelFile(workbook: Workbook, freeze_position: tuple = None):
@@ -380,6 +396,9 @@ def generateCombinations(items: list, max_count: int):
             final_list.extend(combs)
         return final_list
     return []
+
+def getCheckpointFileName(base_directory: str, name: str):
+    return os.path.join(base_directory, f"checkpoints/step_{sanitizeFilename(name)}.pkl")
 
 def getDominantProjectionSystem(shape_files_path: list):
     grouped_by_projection = defaultdict(list)
@@ -435,6 +454,12 @@ def getVariantRangesDifference(first_list: list, second_list: list, acceptable_p
     }
     return differences
 
+def hasCheckpoint(base_directory: str, checkpoint_name: str):
+    is_exist = os.path.exists(getCheckpointFileName(base_directory, checkpoint_name))
+    if not is_exist:
+        print(f"Checkpoint {checkpoint_name} is not exist.")
+    return is_exist
+
 def highlightDataFrameMissingValues(dataframe: DataFrame):
     styled_df = dataframe.style.apply(highlightMissingValue)
     return styled_df
@@ -469,6 +494,34 @@ def isFileOpen(file_path: str):
             return False
     except IOError:
         return True
+
+def loadCheckpoint(base_directory: str, checkpoint_name: str):
+    if hasCheckpoint(base_directory, checkpoint_name):
+        with open(getCheckpointFileName(base_directory, checkpoint_name), "rb") as file:
+            data = pickle.load(file)
+            print(f"Checkpoint {checkpoint_name} is loaded successfully.")
+            return data
+    return None
+
+def loadCSVFilesIntoDataFrames(folder_path: str, recursive: bool = True, required_columns: list[str] = None):
+    csv_files = findCSVFilesBySubstring(folder_path)
+    if not csv_files:
+        raise FileNotFoundError(f"No CSV files found in '{folder_path}'")
+    df_list = []
+    for file_path in csv_files:
+        df = extractDataFrame(file_path, required_columns=required_columns, reformat_names=False)
+        df_list.append(df)
+    return df_list
+
+def loadExcelFilesIntoDataFrames(folder_path: str, recursive: bool = True, required_columns: list[str] = None, reformat_names: bool = True):
+    xlsx_files = findXLSXFilesBySubstring(folder_path)
+    if not xlsx_files:
+        raise FileNotFoundError(f"No Excel files found in '{folder_path}'")
+    df_list = []
+    for file_path in xlsx_files:
+        df = extractDataFrame(file_path, required_columns=required_columns, reformat_names=reformat_names)
+        df_list.append(df)
+    return df_list
 
 def makeAverageOnDataframe(dataframe: DataFrame, keys: list, check_numerics: bool = False, fill_missing_values: bool = True):
     print("Size of data before averaging: " + str(dataframe.shape))
@@ -540,11 +593,16 @@ def mergeDataFramesHorizontallyOnSpecificColumns(dataframes: list[DataFrame], da
     else:
         print("There is one dataframe. Nothing to merge.")
 
-def mergeDataFramesVertically(dataframes: list[DataFrame], type_names: list[str], type_column: str, insert_index: int = 0):
+def mergeDataFramesVertically(dataframes: list[DataFrame], type_names: list[str] = None, type_column: str = None, insert_index: int = 0):
     final_df = DataFrame()
-    for dataframe, type_name in zip(dataframes, type_names):
-        dataframe.insert(insert_index, type_column, type_name)
-        final_df = pandas.concat([final_df, dataframe], ignore_index=True)
+    if type_names is None:
+        final_df = pandas.concat(dataframes, ignore_index=True)
+    elif type_column is not None:
+        for dataframe, type_name in zip(dataframes, type_names):
+            dataframe.insert(insert_index, type_column, type_name)
+            final_df = pandas.concat([final_df, dataframe], ignore_index=True)
+    else:
+        raise Error("Type column name is not provided!")
     return final_df
 
 def mergeSheetsHorizontallyOnSpecificColumns(file_path: str, merging_columns: list[str], selected_sheets: list[str] = None):
@@ -586,13 +644,14 @@ def normalizeDataFrame(dataframe: DataFrame, keys: list = [], ignoring_columns: 
         temp_df = temp_df.loc[:, cols]
     return temp_df
 
-def prepareDataFrame(dataframe: DataFrame, file_path: str, headers_row_index: int = 0, first_data_row: int = 1, include_file_path: bool = True):
+def prepareDataFrame(dataframe: DataFrame, file_path: str, headers_row_index: int = 0, first_data_row: int = 1, include_file_path: bool = True, reformat_names: bool = True):
     if headers_row_index > 0 and first_data_row > 1:
         dataframe.columns = dataframe.iloc[headers_row_index]
         dataframe = dataframe.loc[first_data_row:]
     if include_file_path:
-        dataframe.insert(loc=0, column='file', value=f'=HYPERLINK("{file_path}", "{os.path.basename(file_path)}")')
-    dataframe.columns = dataframe.columns.str.strip().str.lower().str.replace(' ', '_')
+        dataframe.insert(loc=0, column='file', value=f'=HYPERLINK("{file_path}", "{os.path.basename(file_path)}")' )
+    if reformat_names:
+        dataframe.columns = dataframe.columns.str.strip().str.lower().str.replace(' ', '_')
     dataframe = dataframe.map(lambda x: x.strip() if isinstance(x, str) else x)
     return dataframe
 
@@ -640,8 +699,8 @@ def reorderColumnsOfDataFrame(dataframe: DataFrame, starter_columns: list[str], 
     new_order = None
     if column_before_starters:
         if column_before_starters in dataframe.columns:
-            insert_pos = columns.index(column_before_starters) + 1
-            new_order = columns[:insert_pos] + st_columns + columns[insert_pos:]
+            insert_pos = columns.index(column_before_starters)
+            new_order = columns[:insert_pos - 1] + st_columns + columns[insert_pos:]
         else:
             raise ValueError(f"Column '{column_before_starters}' not found in DataFrame.")
     else:
@@ -668,6 +727,19 @@ def roundCoordinates(dataframe: DataFrame, coordinate_columns: list[str], precis
         dataframe[coordinate] = pandas.to_numeric(dataframe[coordinate], errors='coerce').round(precision_digits[index])
     return dataframe
 
+def sanitizeFilename(name: str) -> str:
+    return re.sub(r'[\\/:"*?<>|]+', '_', name)
+
+def saveCheckpoint(base_directory: str, checkpoint_name: str, data):
+    os.makedirs(os.path.join(base_directory, "checkpoints"), exist_ok=True)
+    with open(getCheckpointFileName(base_directory, checkpoint_name), "wb") as file:
+        pickle.dump(data, file)
+        print(f"Checkpoint {checkpoint_name} is saved successfully.")
+
+def saveToCSV(dataframe: DataFrame, save_path: str, file_subject: str = ""):
+    checkFileIsClosedBeforeSave(save_path)
+    dataframe.to_csv(save_path, index=False)
+    print(f"---- Result({file_subject}) is saved to: {save_path}")
 
 def saveDataFramesInExcel(dataframes: list[DataFrame], sheet_names: list[str], save_path: str, file_subject: str = "", freeze_position: tuple = None):
     checkFileIsClosedBeforeSave(save_path)
@@ -676,12 +748,10 @@ def saveDataFramesInExcel(dataframes: list[DataFrame], sheet_names: list[str], s
             dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
     makeExcelFileAutoFitWithFrozenPane(save_path, file_subject)
 
-
 def saveToExcel(dataframe: DataFrame, save_path: str, file_subject: str = ""):
     checkFileIsClosedBeforeSave(save_path)
     dataframe.to_excel(save_path, index=False)
     makeExcelFileAutoFitWithFrozenPane(save_path, file_subject)
-
 
 def splitDataFrameHorizontally(dataframe: DataFrame, common_columns: list[str], columns_to_split: list[str]):
     dfs = []
@@ -692,14 +762,12 @@ def splitDataFrameHorizontally(dataframe: DataFrame, common_columns: list[str], 
             dfs.append(df)
     return dfs
 
-
 def splitDataFrameVertically(dataframe: DataFrame, grouping_columns: list[str]):
     grouped_data = dataframe.groupby(grouping_columns, as_index=False)
     grouped_result = []
     for group_values, group_df in grouped_data:
         grouped_result.append({'values': group_values, 'data': group_df})
     return grouped_result
-
 
 def splitDataFrameVerticallyIntoExcelFiles(dataframe: DataFrame, grouping_columns: list[str], save_folder: str, file_name_prefix: str = None, data_value_as_file_name: bool = True):
     os.makedirs(save_folder, exist_ok=True)
@@ -721,7 +789,6 @@ def splitDataFrameVerticallyIntoExcelFiles(dataframe: DataFrame, grouping_column
         saveToExcel(group_df, file_path, file_subject=str(group_values))
 
     return files_pathes
-
 
 def uniqueValuesCount(values):
     return values.dropna().nunique()
