@@ -42,6 +42,7 @@ dataframe = GU.addPrefixesToColumnNames(dataframe, column_names=["id", "score"],
 
 ### General Column Manipulation
 
+* `addEmptyColumnsToDataframe(dataframe, columns, dtype=None, overwrite=False)`: Adds new empty columns with optional data types.
 * `addPrefixesToColumnNames(dataframe, column_names=None, prefixes="df")`: Adds specified prefixes to given column names.
 * `addSuffixesToColumnNames(dataframe, column_names=None, suffixes="df")`: Adds specified suffixes to given column names.
 * `reduceColumns(dataframe, columns_to_keep=None, columns_to_drop=None)`: Reduces the DataFrame to desired columns.
@@ -52,8 +53,10 @@ dataframe = GU.addPrefixesToColumnNames(dataframe, column_names=["id", "score"],
 ### Missing Values & Cleaning
 
 * `highlightDataFrameMissingValues(dataframe)`: Highlights missing values in yellow.
+* `highlightMissingValue(column)`: Helper function that returns CSS styling for missing values.
 * `convertAllStringNumericsToNumeric(dataframe, ignoring_columns=[])`: Converts all string-based numerics to actual numeric values.
 * `convertDataFrameStringNumericToNumeric(dataframe, numeric_columns=None, ignoring_columns=None)`: Converts specific columns from string to numeric.
+* `convertStringNumericToNumeric(value)`: Converts a single string numeric value to numeric type.
 * `removeDuplicateData(dataframe, ignoring_columns=[])`: Removes duplicate rows and duplicate columns.
 * `removeEmptyRows(dataframe, columns_to_check)`: Removes rows that have all NaNs in specified columns.
 
@@ -132,27 +135,48 @@ dataframe = GU.addPrefixesToColumnNames(dataframe, column_names=["id", "score"],
 
 ### Reading & Preparing
 
-* `extractDataFrame(file_path, sheet_names, ignored_sheets, headers_row_index, first_data_row, include_file_path)`: Reads data.
-* `prepareDataFrame(dataframe, file_path, headers_row_index, first_data_row, include_file_path)`: Cleans and standardizes headers.
+* `extractDataFrame(file_path, sheet_names=None, ignored_sheets=None, headers_row_index=0, first_data_row=1, include_file_path=False, required_columns=None, reformat_names=True)`: Reads Excel or CSV files with flexible sheet/column selection and formatting.
+* `prepareDataFrame(dataframe, file_path, headers_row_index=0, first_data_row=1, include_file_path=True, reformat_names=True)`: Cleans and standardizes DataFrame headers, adds file paths, and reformats column names.
 
 ---
 
 ## 📁 File Discovery
 
-* `findCSVFilesBySubstring(folder_path, file_name_substring)`: Locates CSVs by name.
+* `findCSVFilesBySubstring(folder_path, file_name_substring, recursive=True)`: Locates CSVs by name pattern.
 * `findCSVFilesInFolder(folder_path, subdirectories, check_projection_system)`: Locates CSVs and checks projection.
-* `findShapeFilesInFolder(folder_path, subdirectories)`: Locates shapefiles.
-* `findXLSXFilesBySubstring(folder_path, file_name_substring)`: Locates XLSX files by name.
+* `findShapeFilesInFolder(folder_path, subdirectories)`: Locates shapefiles and projection systems.
+* `findXLSXFilesBySubstring(folder_path, file_name_substring, recursive=True)`: Locates XLSX files by name pattern.
+
+---
+
+## 💾 Data Persistence & Bulk Loading
+
+### Checkpoint Management
+
+* `getCheckpointFileName(base_directory, name)`: Generates sanitized checkpoint file path.
+* `hasCheckpoint(base_directory, checkpoint_name)`: Checks if checkpoint file exists.
+* `loadCheckpoint(base_directory, checkpoint_name)`: Loads checkpoint data from pickle file.
+* `saveCheckpoint(base_directory, checkpoint_name, data)`: Saves data to checkpoint file.
+
+### Bulk File Loading
+
+* `loadCSVFilesIntoDataFrames(folder_path, recursive=True, required_columns=None)`: Loads all CSV files from folder into list of DataFrames.
+* `loadExcelFilesIntoDataFrames(folder_path, recursive=True, required_columns=None, reformat_names=True)`: Loads all Excel files from folder into list of DataFrames.
+
+### File Handling
+
+* `sanitizeFilename(name)`: Removes special characters from filename strings.
+* `saveToCSV(dataframe, save_path, file_subject="")`: Saves DataFrame to CSV file with file-lock checking.
 
 ---
 
 ## 🔄 DataFrame Merging
 
-* `mergeDataFramesHorizontallyOnCommonColumns(dataframes, data_frames_names)`: Merge on common columns.
-* `mergeDataFramesHorizontallyOnSpecificColumns(dataframes, data_frames_names, merging_columns)`: Merge using specific columns.
-* `mergeDataFramesVertically(dataframes, type_names, type_column, insert_index)`: Vertical merge with new label column.
-* `mergeSheetsHorizontallyOnSpecificColumns(file_path, merging_columns, selected_sheets)`: Merge Excel sheets horizontally.
-* `mergeSheetsVertically(file_path, selected_sheets, column_name_for_sheet_titles, sheet_titles)`: Merge Excel sheets vertically.
+* `mergeDataFramesHorizontallyOnCommonColumns(dataframes, data_frames_names)`: Merge multiple DataFrames on common columns.
+* `mergeDataFramesHorizontallyOnSpecificColumns(dataframes, data_frames_names, merging_columns)`: Merge multiple DataFrames using specific columns.
+* `mergeDataFramesVertically(dataframes, type_names=None, type_column=None, insert_index=0)`: Vertical merge/concatenation with optional type label column.
+* `mergeSheetsHorizontallyOnSpecificColumns(file_path, merging_columns, selected_sheets=None)`: Merge Excel sheets horizontally on specific columns.
+* `mergeSheetsVertically(file_path, selected_sheets=None, column_name_for_sheet_titles=None, sheet_titles=None)`: Merge Excel sheets vertically into single DataFrame.
 
 ---
 
