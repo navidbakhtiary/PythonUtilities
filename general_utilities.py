@@ -728,14 +728,27 @@ def normalizeDataFrame(dataframe: DataFrame, keys: list = [], ignoring_columns: 
         temp_df = temp_df.loc[:, cols]
     return temp_df
 
-def prepareDataFrame(dataframe: DataFrame, file_path: str, headers_row_index: int = 0, first_data_row: int = 1, include_file_path: bool = True, reformat_names: bool = True):
+def prepareDataFrame(
+    dataframe: DataFrame,
+    include_file_path: bool = False,
+    file_path: str = "",
+    headers_row_index: int = 0,
+    first_data_row: int = 1,
+    reformat_names: bool = True,
+):
     if headers_row_index > 0 and first_data_row > 1:
         dataframe.columns = dataframe.iloc[headers_row_index]
         dataframe = dataframe.loc[first_data_row:]
     if include_file_path:
-        dataframe.insert(loc=0, column='file', value=f'=HYPERLINK("{file_path}", "{os.path.basename(file_path)}")' )
+        dataframe.insert(
+            loc=0,
+            column="file",
+            value=f'=HYPERLINK("{file_path}", "{os.path.basename(file_path)}")',
+        )
     if reformat_names:
-        dataframe.columns = dataframe.columns.str.strip().str.lower().str.replace(' ', '_')
+        dataframe.columns = (
+            dataframe.columns.str.strip().str.lower().str.replace(" ", "_")
+        )
     dataframe = dataframe.map(lambda x: x.strip() if isinstance(x, str) else x)
     return dataframe
 
