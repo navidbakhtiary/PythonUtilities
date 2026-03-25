@@ -639,21 +639,37 @@ def makeRowsHeightAutoFit(worksheet: worksheet):
             if cell.value:
                 worksheet.row_dimensions[cell.row].height = 15
 
-def mergeDataFramesHorizontallyOnCommonColumns(dataframes: list[DataFrame], data_frames_names: list[str]):
+def mergeDataFramesHorizontallyOnCommonColumns(
+    dataframes: list[DataFrame], data_frame_names: list[str]
+):
     if len(dataframes) > 1:
         final_df = dataframes[0]
-        for dataframe, df_name in zip(dataframes[1:], data_frames_names[1:]):
-            common_columns = list(set(final_df.columns).intersection(set(dataframe.columns)))
-            final_df = final_df.merge(dataframe, how="outer", on=common_columns, suffixes=(None, "#" + df_name))
+        for dataframe, df_name in zip(dataframes[1:], data_frame_names[1:]):
+            common_columns = list(
+                set(final_df.columns).intersection(set(dataframe.columns))
+            )
+            final_df = final_df.merge(
+                dataframe,
+                how="outer",
+                on=common_columns,
+                suffixes=(None, "#" + df_name),
+            )
         return final_df
     else:
         print("There is one dataframe. Nothing to merge.")
 
-def mergeDataFramesHorizontallyOnSpecificColumns(dataframes: list[DataFrame], data_frames_names: list[str], merging_columns: list[str]):
+def mergeDataFramesHorizontallyOnSpecificColumns(
+    dataframes: list[DataFrame], data_frame_names: list[str], merging_columns: list[str]
+):
     if len(dataframes) > 1:
         final_df = dataframes[0]
-        for dataframe, df_name in zip(dataframes[1:], data_frames_names[1:]):
-            final_df = final_df.merge(dataframe, how="outer", on=merging_columns, suffixes=(None, "#" + df_name))
+        for dataframe, df_name in zip(dataframes[1:], data_frame_names[1:]):
+            final_df = final_df.merge(
+                dataframe,
+                how="outer",
+                on=merging_columns,
+                suffixes=(None, "#" + df_name),
+            )
         return final_df
     else:
         print("There is one dataframe. Nothing to merge.")
