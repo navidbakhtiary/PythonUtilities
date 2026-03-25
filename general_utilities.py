@@ -55,12 +55,26 @@ def addLatAndLongColumnsToDataframe(dataframe: DataFrame, location_column: str =
         print("column Location is removed!")
     return dataframe
 
-def addNewDateColumnByDateRangesToDataFrame(dataframe: DataFrame, column_name: str, date_ranges: list, new_date_column_name: str, new_date_format: str):
+def addNewDateColumnByDateRangesToDataFrame(
+    dataframe: DataFrame,
+    column_name: str,
+    date_ranges: list,
+    new_date_column_name: str,
+    new_date_format: str,
+):
     new_df = dataframe.copy()
-    new_df[column_name] = pandas.to_datetime(new_df[column_name], format=new_date_format)
+    new_df[column_name] = pandas.to_datetime(new_df[column_name], errors="coerce")
+    new_df[new_date_column_name] = pandas.NaT
     for range in date_ranges:
-        new_df.loc[(new_df[column_name] >= range[0]) & (new_df[column_name] <= range[1]), new_date_column_name] = pandas.to_datetime(range[1])
-    new_df[new_date_column_name] = new_df[new_date_column_name].dt.strftime(new_date_format)
+        start_date = pandas.to_datetime(range[0], errors="coerce")
+        end_date = pandas.to_datetime(range[1], errors="coerce")
+        new_df.loc[
+            (new_df[column_name] >= start_date) & (new_df[column_name] <= end_date),
+            new_date_column_name,
+        ] = end_date
+    new_df[new_date_column_name] = pandas.to_datetime(
+        new_df[new_date_column_name], errors="coerce"
+    ).dt.strftime(new_date_format)
     return new_df
 
 def addPrefixesToColumnNames(dataframe: DataFrame, column_names: list[str] = None, prefixes: list[str] | str = "df"):
