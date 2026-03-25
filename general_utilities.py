@@ -686,16 +686,19 @@ def mergeDataFramesVertically(dataframes: list[DataFrame], type_names: list[str]
         raise Error("Type column name is not provided!")
     return final_df
 
-def mergeSheetsHorizontallyOnSpecificColumns(file_path: str, merging_columns: list[str], selected_sheets: list[str] = None):
-    dfs = []
-    sheet_names = []
-    excel_data = extractDataFrame(file_path, selected_sheets)
-    excel_data = [{'data': sheet_data, 'title': sheet_name} for sheet_name, sheet_data in excel_data.items()]
-    for sheet in excel_data:
-        dfs.append(sheet['data'])
-        sheet_names.append(sheet['title'])
-    dataframe = mergeDataFramesHorizontallyOnSpecificColumns(dfs, sheet_names, merging_columns)
-    return dataframe
+def mergeSheetsHorizontallyOnSpecificColumns(
+    file_path: str, merging_columns: list[str], selected_sheets: list[str] = None
+):
+    if len(selected_sheets) > 1:
+        dataframes, sheet_names = extractDataFrame(file_path, selected_sheets)
+        dataframe = mergeDataFramesHorizontallyOnSpecificColumns(
+            dataframes, sheet_names, merging_columns
+        )
+        return dataframe
+    else:
+        raise ValueError(
+            f"There is one or no sheet selected. Please select at least two sheets to merge. Selected sheets: {selected_sheets}"
+        )
 
 def mergeSheetsVertically(file_path: str, selected_sheets: list[str] = None, column_name_for_sheet_titles=None, sheet_titles: list[str] = None):
     dfs = []
