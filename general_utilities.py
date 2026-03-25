@@ -308,39 +308,90 @@ def extractCSVDataIntoDataFrame(file_path: str, file_projection_system: str, des
         dataframe['x'], dataframe['y'] = transformer.transform(dataframe['x'].values, dataframe['y'].values)
     return dataframe
 
-def extractDataFrame(file_path: str, sheet_names: list[str] = None, ignored_sheets: list[str] = None, headers_row_index: int = 0, first_data_row: int = 1, include_file_path: bool = False, required_columns: list[str] = None, reformat_names: bool = True):
+def extractDataFrame(
+    file_path: str,
+    selected_sheets: list[str] = None,
+    ignored_sheets: list[str] = None,
+    headers_row_index: int = 0,
+    first_data_row: int = 1,
+    include_file_path: bool = False,
+    required_columns: list[str] = None,
+    reformat_names: bool = True,
+):
     try:
         dataframe = excel_data = None
-        if file_path.lower().endswith('.csv'):
+        if file_path.lower().endswith(".csv"):
             dataframe = pandas.read_csv(file_path, usecols=required_columns)
-        elif file_path.lower().endswith(('.xls', '.xlsx')):
-            if sheet_names and len(sheet_names) > 0:
-                excel_data = pandas.read_excel(file_path, sheet_name=sheet_names, dtype=str, usecols=required_columns)
+        elif file_path.lower().endswith((".xls", ".xlsx")):
+            if selected_sheets and len(selected_sheets) > 0:
+                excel_dict = pandas.read_excel(
+                    file_path,
+                    sheet_name=selected_sheets,
+                    dtype=str,
+                    usecols=required_columns,
+                )
             elif ignored_sheets and len(ignored_sheets) > 0:
                 all_sheets = pandas.ExcelFile(file_path).sheet_names
-                selected_sheets = [sheet for sheet in all_sheets if sheet not in ignored_sheets]
-                excel_data = pandas.read_excel(file_path, sheet_name=selected_sheets, dtype=str, usecols=required_columns)
+                selected_sheets = [
+                    sheet for sheet in all_sheets if sheet not in ignored_sheets
+                ]
+                excel_dict = pandas.read_excel(
+                    file_path,
+                    sheet_name=selected_sheets,
+                    dtype=str,
+                    usecols=required_columns,
+                )
             else:
-                dataframe = pandas.read_excel(file_path, dtype=str, usecols=required_columns)
+                excel_dict = pandas.read_excel(
+                    file_path, dtype=str, usecols=required_columns
+                )
         else:
-            raise ValueError("Unsupported file type. Only .csv, .xls, or .xlsx are allowed.")
+            raise ValueError(
+                "Unsupported file type. Only .csv, .xls, or .xlsx are allowed."
+            )
+
         if dataframe is not None and not dataframe.empty:
-            dataframe = prepareDataFrame(dataframe, file_path, headers_row_index, first_data_row, include_file_path, reformat_names)
+            dataframe = prepareDataFrame(
+                dataframe,
+                include_file_path=include_file_path,
+                file_path=file_path,
+                headers_row_index=headers_row_index,
+                first_data_row=first_data_row,
+                reformat_names=reformat_names,
+            )
             return dataframe
-        elif excel_data:
-            dfs = []
-            names = []
-            for sheet_name, sheet_data in excel_data.items():
-                sheet_data = prepareDataFrame(sheet_data, file_path, headers_row_index, first_data_row, include_file_path, reformat_names)
-                dfs.append(sheet_data)
-                names.append(sheet_name)
-            if len(dfs) == 1:
-                return dfs[0]
-            return excel_data, dfs, names
+        elif isinstance(excel_dict, dict):
+            sheet_names = list(excel_dict.keys())
+            dataframes = list(excel_dict.values())
+            dataframes = [
+                prepareDataFrame(
+                    df,
+                    include_file_path=include_file_path,
+                    file_path=file_path,
+                    headers_row_index=headers_row_index,
+                    first_data_row=first_data_row,
+                    reformat_names=reformat_names,
+                )
+                for df in dataframes
+            ]
+            if len(dataframes) == 1:
+                return dataframes[0]
+            return dataframes, sheet_names
+        elif isinstance(excel_dict, DataFrame):
+            dataframe = prepareDataFrame(
+                excel_dict,
+                include_file_path=include_file_path,
+                file_path=file_path,
+                headers_row_index=headers_row_index,
+                first_data_row=first_data_row,
+                reformat_names=reformat_names,
+            )
+            return dataframe
         else:
             raise ValueError("The File is empty!")
     except Exception as e:
-        return None
+        raise ValueError(f"Error in extracting data from file {file_path}: {str(e)}")
+
 
 def fillDataFrameByAnotherDataFrame(source_dataframe: DataFrame, destination_dataframe: DataFrame, source_columns: list[str], destination_columns: list[str]):
     if len(source_columns) != len(destination_columns):
